@@ -262,6 +262,7 @@ module.exports = {
                 if (loggin.email == req.body.email) {
                     const password = await bcrypt.compare(req.body.password, loggin.password)
                     if (!password) {
+                        console.log("dfg");
                         return res.json({
                             message: "not correct",
                             status: 200,
