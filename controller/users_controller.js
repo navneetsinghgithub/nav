@@ -1,67 +1,87 @@
+const { tokenGenerate } = require('../jwt/jwtToken');
 const users_model = require('../model/users_model')
 const bcrypt = require('bcrypt')
+const nodemailer = require('nodemailer')
 
 module.exports = {
     adduser: async (req, res) => {
         try {
+            let resultExt = "";
+            let imageFilePath = "";
 
             if (req.files && req.files.image) {
                 const image = req.files.image;
+                const fileExt = image.name.split(".").pop();
+                const letter = "ASDFGB2345ASD45JKWXY";
 
-                if (image) {
-                    const file_name_string = image.name;
-                    const file_name_array = file_name_string.split(".")
-                    const file_ext = file_name_array[file_name_array.length - 1]
-                    const letter = "ASDFGB2345ASD45JKWXY";
-                    let result = ""
-                    while (result.length < 29) {
-                        const rand_int = Math.floor(Math.random() * 19 + 2);
-                        const rand_chr = letter[rand_int];
-                        if (result.substr(-1, 1) !== rand_chr) result += rand_chr;
+                while (resultExt.length < 29) {
+                    const randInt = Math.floor(Math.random() * 19 + 2);
+                    const randChr = letter[randInt];
+
+                    if (resultExt.substr(-1, 1) !== randChr) {
+                        resultExt += randChr;
                     }
-                    const resultExt = `${result}.${file_ext}`;
-                    const folder = "chatimage"
-                    const dataa = await image.mv(`public/images/${folder}/${resultExt}`)
-                    const saltround = 10;
-                    const password = await bcrypt.hash(req.body.password, saltround)
-                    const adduser = await users_model.create({
-                        name: req.body.name,
-                        lastname: req.body.lastname,
-                        email: req.body.email,
-                        contact: req.body.contact,
-                        password: password,
-
-                        image: resultExt,
-
-
-                    })
-
-                    return res.json({
-                        message: "add user",
-                        status: 200,
-                        body: adduser,
-                    })
                 }
+
+                resultExt = `${resultExt}.${fileExt}`;
+                const folder = "chatimage";
+                imageFilePath = `public/images/${folder}/${resultExt}`;
+                await image.mv(imageFilePath);
             }
 
+            const saltround = 10;
+            const password = await bcrypt.hash(req.body.password, saltround);
+
+            const otp = Math.floor(1000 + Math.random() * 1100);
+
+            const transport = nodemailer.createTransport({
+                host: "sandbox.smtp.mailtrap.io",
+                port: 2525,
+                auth: {
+                    user: "fc9cf37b147594",
+                    pass: "692d2d59fe7312"
+                }
+            });
+
+            const info = await transport.sendMail({
+                from: "admin@admin.com",
+                to: req.body.email,
+                subject: "Forget Password Link",
+                text: "This is your link",
+                html: `${otp}`,
+            });
             const adduser = await users_model.create({
                 name: req.body.name,
                 lastname: req.body.lastname,
                 email: req.body.email,
                 contact: req.body.contact,
-                password: req.body.password,
-            })
+                password: password,
+                image: imageFilePath ? resultExt : "",
+                otp: otp,
+            });
+
+
+            const token = await tokenGenerate(adduser._id);
+
+            const updateResult = await users_model.findByIdAndUpdate(
+                { _id: adduser._id },
+                {
+                    token: token.token,
+                    loginTime: token.time,
+                },
+                { new: true }
+            );
 
             return res.json({
                 message: "add user",
                 status: 200,
-                body: adduser,
-            })
-
-
+                body: updateResult,
+            });
         } catch (error) {
-            console.log(error)
+            console.error(error);
+
         }
+
     },
 
     finduser: async (req, res) => {
@@ -243,17 +263,19 @@ module.exports = {
                 }
             }
         } catch (error) {
-            console.log(error);S
+            console.log(error);
         }
     },
     login1: async (req, res) => {
         try {
+
             const loggin = await users_model.findOne({
                 email: req.body.email
             })
+            console.log(loggin, "loggin")
             if (!loggin) {
                 return res.json({
-                    message: "unsuccesful",
+                    message: "Email or password is not correct",
                     status: 404,
                     body: {}
                 })
@@ -262,7 +284,7 @@ module.exports = {
                 if (loggin.email == req.body.email) {
                     const password = await bcrypt.compare(req.body.password, loggin.password)
                     if (!password) {
-                        console.log("dfg");
+                        // console.log("dfg");
                         return res.json({
                             message: "not correct",
                             status: 200,
@@ -270,17 +292,32 @@ module.exports = {
                         })
 
                     } else {
+                        const token = await tokenGenerate(loggin._id);
+
+                        const updateResult = await users_model.findByIdAndUpdate(
+                            { _id: loggin._id },
+                            {
+                                token: token.token,
+                                loginTime: token.time,
+                            },
+                            { new: true }
+                        );
+
                         return res.json({
-                            message: "correct",
+                            message: "add user",
                             status: 200,
-                            body: loggin
-                        })
+                            body: updateResult,
+                        });
                     }
                 }
             }
-    
-        } catch(error) {
-        console.log(error);
-    }
-}
+
+        } catch (error) {
+            console.log(error);
+        }
+    },
+
+
+  
+
 }
